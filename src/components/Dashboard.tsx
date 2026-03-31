@@ -31,6 +31,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   
   const [messages, setMessages] = useState<any[]>([
@@ -123,8 +124,8 @@ export default function Dashboard({ onBack }: DashboardProps) {
   return (
     <div className="flex h-screen bg-navy-900 text-slate-300 font-sans overflow-hidden">
       
-      {/* --- SIDEBAR --- */}
-      <aside className="w-64 bg-navy-800 border-r border-navy-700 flex flex-col z-20">
+      {/* --- SIDEBAR (desktop only) --- */}
+      <aside className="hidden md:flex w-64 bg-navy-800 border-r border-navy-700 flex-col z-20">
         <div className="p-6 flex items-center justify-between border-b border-navy-700">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.4)]">
@@ -193,46 +194,109 @@ export default function Dashboard({ onBack }: DashboardProps) {
         </div>
       </aside>
 
+      {/* --- MOBILE SIDEBAR OVERLAY --- */}
+      {mobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        >
+          <aside 
+            className="absolute left-0 top-0 bottom-0 w-72 bg-navy-800 border-r border-navy-700 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 flex items-center justify-between border-b border-navy-700">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.4)]">
+                  <span className="text-white font-bold text-lg">B</span>
+                </div>
+                <span className="text-white font-bold text-lg tracking-wide">BoothIQ</span>
+              </div>
+              <button onClick={() => setMobileSidebarOpen(false)} className="p-1.5 text-slate-400 hover:text-white hover:bg-navy-700 rounded-lg transition-colors">
+                <ArrowLeft size={18} />
+              </button>
+            </div>
+            <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
+              {[
+                { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+                { id: 'finance', icon: Wallet, label: 'Finance' },
+                { id: 'inventory', icon: Package, label: 'Inventory' },
+                { id: 'insights', icon: BarChart3, label: 'Insights' },
+                { id: 'assistant', icon: BrainCircuit, label: 'AI Assistant', glow: true },
+                { id: 'settings', icon: Settings, label: 'Settings' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveTab(item.id); setMobileSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                    activeTab === item.id 
+                      ? item.glow 
+                        ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+                        : 'bg-navy-700 text-white shadow-lg shadow-black/20'
+                      : 'hover:bg-navy-700/50 hover:text-slate-200'
+                  }`}
+                >
+                  <item.icon size={20} className={activeTab === item.id && item.glow ? 'animate-pulse text-indigo-400' : ''} />
+                  <span className="font-medium">{item.label}</span>
+                </button>
+              ))}
+            </nav>
+            <div className="p-4 border-t border-navy-700">
+              <button onClick={onBack} className="w-full flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white hover:bg-navy-700 rounded-lg transition-colors text-sm font-medium">
+                <ArrowLeft size={16} /> Back to Landing
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 flex flex-col min-w-0 bg-navy-900 relative overflow-hidden">
         
         {/* Top Header */}
-        <header className="h-20 px-8 flex items-center justify-between border-b border-navy-700 bg-navy-900/80 backdrop-blur-md z-10">
-          <div className="flex items-center gap-4">
+        <header className="h-14 md:h-20 px-4 md:px-8 flex items-center justify-between border-b border-navy-700 bg-navy-900/80 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Mobile: hamburger menu */}
+            <button 
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden p-1.5 text-slate-400 hover:text-white hover:bg-navy-800 rounded-lg transition-colors"
+            >
+              <BarChart3 size={20} />
+            </button>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">
+              <h1 className="text-sm md:text-xl font-bold text-white tracking-tight truncate max-w-[140px] md:max-w-none">
                 {businessDetails?.name || 'Loading...'}
               </h1>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Live Updates</span>
+                <span className="text-[9px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest">Live</span>
               </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-6">
-            <div className="flex items-center bg-navy-800 rounded-lg p-1 border border-navy-700">
+          <div className="flex items-center gap-2 md:gap-6">
+            {/* Language toggle — hidden on very small screens */}
+            <div className="hidden sm:flex items-center bg-navy-800 rounded-lg p-1 border border-navy-700">
               <button 
                 onClick={() => setLanguage('EN')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'EN' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
+                className={`px-2 md:px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'EN' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
               >EN</button>
               <button 
                 onClick={() => setLanguage('HI')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'HI' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
+                className={`px-2 md:px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'HI' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
               >हिंदी</button>
             </div>
             
-            <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
-              <Bell size={20} />
-              {kpis.netProfit < 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-navy-900"></span>}
+            <button className="relative p-1.5 md:p-2 text-slate-400 hover:text-white transition-colors">
+              <Bell size={18} />
+              {kpis.netProfit < 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-navy-900"></span>}
             </button>
             
-            <div className="flex items-center gap-3 pl-4 border-l border-navy-700 cursor-pointer group">
-              <div className="text-right">
-                <p className="text-white font-bold text-sm tracking-tight">{businessDetails?.owner_name || '...'}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Store Owner</p>
+            <div className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-navy-700 cursor-pointer group">
+              <div className="hidden sm:block text-right">
+                <p className="text-white font-bold text-xs md:text-sm tracking-tight">{businessDetails?.owner_name || '...'}</p>
+                <p className="text-[9px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest">Owner</p>
               </div>
-              <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-navy-700 group-hover:border-indigo-500 transition-all duration-300 shadow-lg">
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-navy-700 group-hover:border-indigo-500 transition-all duration-300 shadow-lg">
                 <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&q=80" alt="Profile" className="w-full h-full object-cover" />
               </div>
             </div>
@@ -240,7 +304,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
         </header>
 
         {/* Scrollable Dashboard Area */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
+        <div className="flex-1 overflow-y-auto p-3 md:p-8 custom-scrollbar relative pb-20 md:pb-8">
           
           {/* Background Ambient Glows */}
           <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none animate-glow-pulse"></div>
@@ -249,7 +313,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
           {activeTab === 'dashboard' && (
             <>
               {/* Row 1: KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 relative z-10">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8 relative z-10">
             <KPICard title="Total Revenue" value={businessContext ? `₹${kpis.totalIncome.toLocaleString()}` : '...'} glowColor="rgba(99,102,241,0.2)" gradient="from-indigo-400 to-indigo-600" change={businessContext ? `${businessContext.transactions.filter((t:any)=>t.type==='INCOME').length} txns` : '...'} isPositive={kpis.totalIncome > 0} />
             <KPICard title="Expenses" value={businessContext ? `₹${kpis.totalExpense.toLocaleString()}` : '...'} glowColor="rgba(244,63,94,0.15)" gradient="from-rose-400 to-rose-600" change={businessContext ? `${businessContext.transactions.filter((t:any)=>t.type==='EXPENSE').length} txns` : '...'} isNegative={kpis.totalExpense > 0} />
             <KPICard title="Net Profit" value={businessContext ? `₹${kpis.netProfit.toLocaleString()}` : '...'} glowColor="rgba(16,185,129,0.2)" gradient="from-emerald-400 to-emerald-600" change={businessContext ? (kpis.netProfit >= 0 ? 'Profitable' : 'Loss') : '...'} isPositive={kpis.netProfit > 0} isNegative={kpis.netProfit < 0} />
@@ -257,29 +321,29 @@ export default function Dashboard({ onBack }: DashboardProps) {
           </div>
 
           {/* Row 2 & 3 Grid Layout */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 relative z-10">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 relative z-10">
             
             {/* LEFT COLUMN */}
             <div className="xl:col-span-2 space-y-6">
               
               {/* Sales Overview Chart */}
-              <div className="bg-navy-800 border border-navy-700 rounded-[32px] p-8 shadow-2xl relative overflow-hidden group">
+              <div className="bg-navy-800 border border-navy-700 rounded-[24px] md:rounded-[32px] p-4 md:p-8 shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
                 
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
                   <div>
-                    <h2 className="text-xl font-bold text-white tracking-tight">Sales & Forecast</h2>
-                    <p className="text-xs text-slate-500 font-medium mt-1">AI Predicted growth based on seasonal trends</p>
+                    <h2 className="text-lg md:text-xl font-bold text-white tracking-tight">Sales & Forecast</h2>
+                    <p className="text-[10px] md:text-xs text-slate-500 font-medium mt-1">AI Predicted growth based on seasonal trends</p>
                   </div>
-                  <div className="flex bg-navy-700 p-1 rounded-xl border border-navy-600">
-                    <button className="px-4 py-1.5 text-xs font-bold rounded-lg bg-navy-600 text-white shadow-lg">Weekly</button>
-                    <button className="px-4 py-1.5 text-xs font-bold rounded-lg text-slate-500 hover:text-white transition">Monthly</button>
+                  <div className="flex bg-navy-700 p-1 rounded-xl border border-navy-600 self-stretch sm:self-auto">
+                    <button className="flex-1 sm:px-4 py-1.5 text-[10px] md:text-xs font-bold rounded-lg bg-navy-600 text-white shadow-lg">Weekly</button>
+                    <button className="flex-1 sm:px-4 py-1.5 text-[10px] md:text-xs font-bold rounded-lg text-slate-500 hover:text-white transition">Monthly</button>
                   </div>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-8">
+                <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
                   {/* Custom SVG Chart */}
-                  <div className="flex-1 relative h-[300px]">
+                  <div className="flex-1 relative h-[200px] md:h-[300px]">
                     <div className="absolute inset-0 flex flex-col justify-between py-2 border-b border-navy-700">
                       {[...Array(6)].map((_, i) => (
                         <div key={i} className="w-full h-[1px] bg-navy-700/50"></div>
@@ -332,91 +396,93 @@ export default function Dashboard({ onBack }: DashboardProps) {
                       ))}
                     </svg>
 
-                    <div className="absolute -bottom-6 left-0 right-0 flex justify-between text-[10px] text-slate-500 font-bold uppercase tracking-widest px-1">
+                    <div className="absolute -bottom-6 left-0 right-0 flex justify-between text-[9px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest px-1">
                       <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                     </div>
 
-                    <div className="absolute top-4 left-4 bg-navy-900/80 backdrop-blur-md border border-navy-700 p-4 rounded-2xl shadow-2xl">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Peak Sales</p>
-                      <div className="flex items-baseline gap-2">
-                         <span className="text-2xl font-black text-white tracking-tighter">₹24,500</span>
-                         <span className="text-xs font-bold text-emerald-400">+15%</span>
+                    <div className="absolute top-2 left-2 md:top-4 md:left-4 bg-navy-900/80 backdrop-blur-md border border-navy-700 p-2 md:p-4 rounded-xl md:rounded-2xl shadow-2xl">
+                      <p className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5 md:mb-1">Peak Sales</p>
+                      <div className="flex items-baseline gap-1.5 md:gap-2">
+                         <span className="text-lg md:text-2xl font-black text-white tracking-tighter">₹24,500</span>
+                         <span className="text-[10px] md:text-xs font-bold text-emerald-400">+15%</span>
                       </div>
                     </div>
                   </div>
 
                   {/* AI Alerts Column */}
-                  <div className="w-full lg:w-72 flex flex-col gap-4">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
-                       <Sparkles size={14} className="text-indigo-400" /> AI Highlights
+                  <div className="w-full lg:w-72 flex flex-col gap-3 md:gap-4">
+                    <h3 className="text-[10px] md:text-sm font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                       <Sparkles size={12} className="text-indigo-400" /> AI Highlights
                     </h3>
                     
-                    <AlertMiniCard 
-                      icon={AlertTriangle} 
-                      color="rose" 
-                      title="Expense Alert" 
-                      desc="Stock costs up by 20%" 
-                    />
-                    <AlertMiniCard 
-                      icon={TrendingDown} 
-                      color="amber" 
-                      title="Profit Warning" 
-                      desc="May drop next month" 
-                    />
-                    <AlertMiniCard 
-                      icon={Lightbulb} 
-                      color="indigo" 
-                      title="Growth Tip" 
-                      desc="Optimize pricing for Snacks" 
-                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
+                      <AlertMiniCard 
+                        icon={AlertTriangle} 
+                        color="rose" 
+                        title="Expense Alert" 
+                        desc="Stock costs up by 20%" 
+                      />
+                      <AlertMiniCard 
+                        icon={TrendingDown} 
+                        color="amber" 
+                        title="Profit Warning" 
+                        desc="May drop next month" 
+                      />
+                      <AlertMiniCard 
+                        icon={Lightbulb} 
+                        color="indigo" 
+                        title="Growth Tip" 
+                        desc="Optimize Snacks pricing" 
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Bottom Row: Inventory & Top Products */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 
                 {/* Inventory Snapshot */}
-                <div className="glass-card rounded-[32px] p-8">
+                <div className="glass-card rounded-[24px] md:rounded-[32px] p-5 md:p-8">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-bold text-white tracking-tight">Stock Alerts</h2>
+                    <h2 className="text-base md:text-lg font-bold text-white tracking-tight">Stock Alerts</h2>
                     <Package size={18} className="text-slate-500" />
                   </div>
                   <div className="space-y-4">
                     <StockItem name="Parle-G Biscuit" level={15} status="Critical" color="rose" />
                     <StockItem name="Amul Gold Milk" level={28} status="Low" color="amber" />
-                    <StockItem name="Fortune Sunflower Oil" level={65} status="Healthy" color="emerald" />
+                    <StockItem name="Fortune Oil" level={65} status="Healthy" color="emerald" />
                   </div>
-                  <button className="w-full mt-6 py-3 rounded-xl bg-navy-700 hover:bg-navy-600 text-white text-xs font-bold transition-all border border-navy-600">
+                  <button className="w-full mt-6 py-3 rounded-xl bg-navy-700 hover:bg-navy-600 text-white text-[10px] md:text-xs font-bold transition-all border border-navy-600">
                     Manage Inventory
                   </button>
                 </div>
 
                 {/* Cash Flow */}
-                <div className="glass-card rounded-[32px] p-8 flex flex-col">
+                <div className="glass-card rounded-[24px] md:rounded-[32px] p-5 md:p-8 flex flex-col">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-bold text-white tracking-tight">Cash Flow</h2>
+                    <h2 className="text-base md:text-lg font-bold text-white tracking-tight">Cash Flow</h2>
                     <Activity size={18} className="text-slate-500" />
                   </div>
                   
-                  <div className="flex-1 flex items-end gap-3 pb-4 min-h-[120px]">
+                  <div className="flex-1 flex items-end gap-2 md:gap-3 pb-4 min-h-[100px] md:min-h-[120px]">
                     {[
                       { in: 60, out: 40 }, { in: 80, out: 30 }, { in: 45, out: 55 }, 
                       { in: 95, out: 70 }, { in: 55, out: 35 }, { in: 75, out: 65 }
                     ].map((d, i) => (
-                      <div key={i} className="flex-1 flex gap-1 h-full items-end">
-                        <div className="w-2 bg-indigo-500 rounded-t-sm" style={{ height: `${d.in}%` }}></div>
-                        <div className="w-2 bg-rose-400 rounded-t-sm" style={{ height: `${d.out}%` }}></div>
+                      <div key={i} className="flex-1 flex gap-0.5 md:gap-1 h-full items-end">
+                        <div className="w-1.5 md:w-2 bg-indigo-500 rounded-t-sm" style={{ height: `${d.in}%` }}></div>
+                        <div className="w-1.5 md:w-2 bg-rose-400 rounded-t-sm" style={{ height: `${d.out}%` }}></div>
                       </div>
                     ))}
                   </div>
                   
                   <div className="bg-navy-700/50 rounded-2xl p-4 border border-navy-600">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Net Cash Forecast</span>
-                      <span className="text-[10px] text-emerald-400 font-bold">+₹12,400</span>
+                      <span className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase">Net Cash Forecast</span>
+                      <span className="text-[9px] md:text-[10px] text-emerald-400 font-bold">+₹12,400</span>
                     </div>
-                    <p className="text-xs font-bold text-white">Rent Due: <span className="text-rose-400">₹8,000 in 3 days</span></p>
+                    <p className="text-[10px] md:text-xs font-bold text-white">Rent Due: <span className="text-rose-400">₹8,000 in 3 days</span></p>
                   </div>
                 </div>
               </div>
@@ -424,7 +490,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
             </div>
 
             {/* RIGHT COLUMN: AI Assistant Chat */}
-            <div className="bg-navy-800 border border-navy-700 rounded-[32px] shadow-2xl flex flex-col h-[600px] xl:h-auto overflow-hidden relative border-t-2 border-t-indigo-500">
+            <div className="bg-navy-800 border border-navy-700 rounded-[24px] md:rounded-[32px] shadow-2xl flex flex-col h-[450px] md:h-[600px] xl:h-auto overflow-hidden relative border-t-2 border-t-indigo-500">
               <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
               
               <div className="p-6 border-b border-navy-700 flex justify-between items-center bg-navy-800/80 backdrop-blur-md z-10">
@@ -635,8 +701,8 @@ export default function Dashboard({ onBack }: DashboardProps) {
 
         </div>
 
-        {/* --- BOTTOM STATUS BAR --- */}
-        <footer className="h-10 bg-navy-900 border-t border-navy-700 flex items-center justify-center gap-8 text-[10px] text-slate-500 font-bold uppercase tracking-widest z-10">
+        {/* --- BOTTOM STATUS BAR (desktop) --- */}
+        <footer className="hidden md:flex h-10 bg-navy-900 border-t border-navy-700 items-center justify-center gap-8 text-[10px] text-slate-500 font-bold uppercase tracking-widest z-10">
           <div className="flex items-center gap-2">
              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
              Live Revenue Tracker
@@ -652,6 +718,32 @@ export default function Dashboard({ onBack }: DashboardProps) {
              Inventory Predictive AI: <span className="text-slate-300">Syncing...</span>
           </div>
         </footer>
+
+        {/* --- MOBILE BOTTOM NAV --- */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-navy-800/95 backdrop-blur-md border-t border-navy-700 z-30 flex justify-around items-center h-16 px-2">
+          {[
+            { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+            { id: 'finance', icon: Wallet, label: 'Finance' },
+            { id: 'assistant', icon: BrainCircuit, label: 'AI', glow: true },
+            { id: 'inventory', icon: Package, label: 'Stock' },
+            { id: 'settings', icon: Settings, label: 'More' },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all ${
+                activeTab === item.id
+                  ? item.glow
+                    ? 'text-indigo-400'
+                    : 'text-white'
+                  : 'text-slate-500'
+              }`}
+            >
+              <item.icon size={20} className={activeTab === item.id && item.glow ? 'animate-pulse' : ''} />
+              <span className="text-[9px] font-bold uppercase tracking-wider">{item.label}</span>
+            </button>
+          ))}
+        </nav>
 
       </main>
 
@@ -774,31 +866,31 @@ function TabFinance({ transactions }: { transactions: any[] }) {
         </div>
       </div>
 
-      <div className="bg-navy-800 border border-navy-700 rounded-2xl overflow-hidden shadow-xl">
-        <table className="w-full text-left border-collapse">
+      <div className="bg-navy-800 border border-navy-700 rounded-2xl overflow-hidden shadow-xl overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse min-w-[600px]">
           <thead>
-            <tr className="bg-navy-900/50 border-b border-navy-700 text-xs font-bold text-slate-400 uppercase tracking-widest">
-              <th className="p-4 pl-6">Date</th>
-              <th className="p-4">Description</th>
-              <th className="p-4">Category</th>
-              <th className="p-4">Type</th>
-              <th className="p-4 pr-6 text-right">Amount</th>
+            <tr className="bg-navy-900/50 border-b border-navy-700 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <th className="p-3 md:p-4 pl-6">Date</th>
+              <th className="p-3 md:p-4">Description</th>
+              <th className="p-3 md:p-4">Category</th>
+              <th className="p-3 md:p-4">Type</th>
+              <th className="p-3 md:p-4 pr-6 text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
             {transactions.map((t, idx) => (
-              <tr key={idx} className="border-b border-navy-700 hover:bg-navy-700/30 transition-colors">
-                <td className="p-4 pl-6 text-slate-300 text-sm">{new Date(t.created_at).toLocaleDateString()}</td>
-                <td className="p-4 text-white font-medium">{t.description}</td>
-                <td className="p-4 text-slate-400 text-sm">{t.category}</td>
-                <td className="p-4">
-                  <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-md ${
+              <tr key={idx} className="border-b border-navy-700 hover:bg-navy-700/30 transition-colors text-xs md:text-sm">
+                <td className="p-3 md:p-4 pl-6 text-slate-300">{new Date(t.created_at).toLocaleDateString()}</td>
+                <td className="p-3 md:p-4 text-white font-medium">{t.description}</td>
+                <td className="p-3 md:p-4 text-slate-400">{t.category}</td>
+                <td className="p-3 md:p-4">
+                  <span className={`px-2 py-1 text-[9px] md:text-[10px] font-bold uppercase rounded-md ${
                     t.type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
                   }`}>
                     {t.type}
                   </span>
                 </td>
-                <td className={`p-4 pr-6 text-right font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <td className={`p-3 md:p-4 pr-6 text-right font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {t.type === 'INCOME' ? '+' : '-'}₹{t.amount.toLocaleString()}
                 </td>
               </tr>
