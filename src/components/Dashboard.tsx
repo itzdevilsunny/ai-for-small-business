@@ -7,13 +7,11 @@ import {
   BrainCircuit, 
   Settings,
   Bell,
-  User,
   Search,
   Mic,
   AlertTriangle,
   TrendingDown,
   Lightbulb,
-  ChevronDown,
   Send,
   ShieldCheck,
   TrendingUp,
@@ -21,7 +19,9 @@ import {
   ArrowLeft,
   Sparkles
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import { supabase } from '../lib/supabaseClient';
+import { generateBusinessInsight, type AIResponse } from '../lib/gemini';
 
 interface DashboardProps {
   onBack: () => void;
@@ -33,7 +33,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<any[]>([
     { 
       id: 1, 
       role: 'assistant', 
@@ -50,29 +50,74 @@ export default function Dashboard({ onBack }: DashboardProps) {
     }
   ]);
 
+  const [businessContext, setBusinessContext] = useState<any>(null);
+  const [businessDetails, setBusinessDetails] = useState<{name: string; owner_name: string} | null>(null);
+  const [kpis, setKpis] = useState({ totalIncome: 0, totalExpense: 0, netProfit: 0 });
+  const [smartSuggestions, setSmartSuggestions] = useState<string[]>([]);
+  const [language, setLanguage] = useState<'EN' | 'HI'>('EN');
+
+  // Fetch initial context for AI and KPIs
+  useEffect(() => {
+    const fetchContext = async () => {
+      try {
+        const { data: transactions } = await supabase.from('transactions').select('*').limit(50);
+        const { data: inventory } = await supabase.from('inventory').select('*');
+        const { data: businesses } = await supabase.from('businesses').select('name, owner_name').limit(1);
+
+        if (businesses && businesses.length > 0) {
+          setBusinessDetails(businesses[0]);
+        }
+
+        const txns = transactions || [];
+        const invt = inventory || [];
+        const totalIncome = txns.filter((t: any) => t.type === 'INCOME').reduce((s: number, t: any) => s + Number(t.amount), 0);
+        const totalExpense = txns.filter((t: any) => t.type === 'EXPENSE').reduce((s: number, t: any) => s + Number(t.amount), 0);
+        const netProfit = totalIncome - totalExpense;
+        setKpis({ totalIncome, totalExpense, netProfit });
+        setBusinessContext({ transactions: txns, inventory: invt });
+
+        // Generate smart suggestions from real data
+        const suggestions: string[] = [];
+        const lowStock = invt.filter((i: any) => i.quantity <= i.threshold);
+        lowStock.forEach((i: any) => suggestions.push(`Restock ${i.item_name} — only ${i.quantity} ${i.unit || 'units'} left`));
+        if (netProfit < 0) suggestions.push('Review recent expenses — you are running at a loss');
+        if (netProfit > 0) suggestions.push(`Profit is ₹${netProfit.toLocaleString()} — consider reinvesting`);
+        const topExpense = txns.filter((t: any) => t.type === 'EXPENSE').sort((a: any, b: any) => b.amount - a.amount)[0];
+        if (topExpense) suggestions.push(`Biggest expense: ${topExpense.description} (₹${Number(topExpense.amount).toLocaleString()})`);
+        setSmartSuggestions(suggestions.slice(0, 4));
+      } catch (e) {
+        console.error("Context fetch failed:", e);
+      }
+    };
+    fetchContext();
+  }, []);
+
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
-    const newUserMsg = { id: Date.now(), role: 'user', text: chatInput };
-    setMessages(prev => [...prev, newUserMsg]);
+    const query = chatInput;
+    const newUserMsg = { id: Date.now(), role: 'user', text: query, type: 'text' };
+    setMessages(prev => [...prev, newUserMsg as any]);
     setChatInput('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      setIsTyping(false);
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        role: 'assistant',
-        text: 'I analyzed your recent transactions. Your weekend sales dropped by 12% due to rain. Would you like me to create a "Monsoon Special" discount SMS for your regular customers to boost today\'s sales?'
-      }]);
-    }, 1500);
+    // Call Gemini
+    const aiData: AIResponse = await generateBusinessInsight(query, language, businessContext);
+    
+    setIsTyping(false);
+    
+    // Add AI Response
+    setMessages(prev => [...prev, {
+      id: Date.now() + 1,
+      role: 'assistant',
+      ...aiData
+    } as any]);
   };
 
   return (
@@ -126,21 +171,25 @@ export default function Dashboard({ onBack }: DashboardProps) {
             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Business Health</h4>
           </div>
           <div className="flex items-end gap-2 mb-2">
-            <span className="text-3xl font-black gradient-text">85</span>
+            <span className="text-3xl font-black gradient-text">
+              {businessContext
+                ? Math.min(100, Math.max(0, Math.round((kpis.netProfit / Math.max(kpis.totalIncome, 1)) * 100 + 50)))
+                : '--'}
+            </span>
             <span className="text-sm text-slate-600 font-medium mb-1">/ 100</span>
           </div>
           <div className="w-full bg-navy-600 h-1.5 rounded-full overflow-hidden">
             <motion.div 
               initial={{ width: 0 }}
-              animate={{ width: '85%' }}
+              animate={{ width: businessContext ? `${Math.min(100, Math.max(0, Math.round((kpis.netProfit / Math.max(kpis.totalIncome, 1)) * 100 + 50)))}%` : '0%' }}
               transition={{ duration: 1, ease: "easeOut" }}
               className="bg-gradient-to-r from-emerald-500 to-indigo-500 h-full rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"
             ></motion.div>
           </div>
-          <p className="text-[10px] text-emerald-400 mt-2 font-semibold flex items-center gap-1">
-            <div className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></div>
-            Excellent • Low Risk
-          </p>
+          <div className={`text-[10px] mt-2 font-semibold flex items-center gap-1 ${kpis.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            <div className={`w-1 h-1 rounded-full animate-pulse ${kpis.netProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
+            {kpis.netProfit >= 0 ? 'Profitable' : 'Running at Loss'}
+          </div>
         </div>
       </aside>
 
@@ -151,9 +200,10 @@ export default function Dashboard({ onBack }: DashboardProps) {
         <header className="h-20 px-8 flex items-center justify-between border-b border-navy-700 bg-navy-900/80 backdrop-blur-md z-10">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">Sharma Kirana Store</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">
+                {businessDetails?.name || 'Loading...'}
+              </h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-navy-700 text-slate-400 border border-navy-600 uppercase tracking-tighter">ID: #SK-8892</span>
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Live Updates</span>
               </div>
@@ -162,18 +212,24 @@ export default function Dashboard({ onBack }: DashboardProps) {
           
           <div className="flex items-center gap-6">
             <div className="flex items-center bg-navy-800 rounded-lg p-1 border border-navy-700">
-              <button className="px-3 py-1.5 rounded-md bg-navy-700 text-white text-xs font-bold shadow-sm">EN</button>
-              <button className="px-3 py-1.5 rounded-md text-slate-500 hover:text-white text-xs font-bold transition-colors">हिंदी</button>
+              <button 
+                onClick={() => setLanguage('EN')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'EN' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
+              >EN</button>
+              <button 
+                onClick={() => setLanguage('HI')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold shadow-sm transition-colors ${language === 'HI' ? 'bg-navy-700 text-white' : 'text-slate-500 hover:text-white'}`}
+              >हिंदी</button>
             </div>
             
             <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
               <Bell size={20} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-navy-900"></span>
+              {kpis.netProfit < 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-navy-900"></span>}
             </button>
             
             <div className="flex items-center gap-3 pl-4 border-l border-navy-700 cursor-pointer group">
               <div className="text-right">
-                <p className="text-white font-bold text-sm tracking-tight">Rajesh Sharma</p>
+                <p className="text-white font-bold text-sm tracking-tight">{businessDetails?.owner_name || '...'}</p>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Store Owner</p>
               </div>
               <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-navy-700 group-hover:border-indigo-500 transition-all duration-300 shadow-lg">
@@ -190,12 +246,14 @@ export default function Dashboard({ onBack }: DashboardProps) {
           <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none animate-glow-pulse"></div>
           <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none animate-glow-pulse" style={{ animationDelay: '2s' }}></div>
 
-          {/* Row 1: KPI Cards */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* Row 1: KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 relative z-10">
-            <KPICard title="Total Revenue" value="₹1,25,000" glowColor="rgba(99,102,241,0.2)" gradient="from-indigo-400 to-indigo-600" change="+12.5%" />
-            <KPICard title="Expenses" value="₹78,000" glowColor="rgba(244,63,94,0.15)" gradient="from-rose-400 to-rose-600" change="+5.2%" isNegative />
-            <KPICard title="Net Profit" value="₹47,000" glowColor="rgba(16,185,129,0.2)" gradient="from-emerald-400 to-emerald-600" change="+24.8%" isPositive />
-            <KPICard title="Cash in Hand" value="₹30,500" glowColor="rgba(245,158,11,0.15)" gradient="from-amber-400 to-amber-600" change="-2.1%" />
+            <KPICard title="Total Revenue" value={businessContext ? `₹${kpis.totalIncome.toLocaleString()}` : '...'} glowColor="rgba(99,102,241,0.2)" gradient="from-indigo-400 to-indigo-600" change={businessContext ? `${businessContext.transactions.filter((t:any)=>t.type==='INCOME').length} txns` : '...'} isPositive={kpis.totalIncome > 0} />
+            <KPICard title="Expenses" value={businessContext ? `₹${kpis.totalExpense.toLocaleString()}` : '...'} glowColor="rgba(244,63,94,0.15)" gradient="from-rose-400 to-rose-600" change={businessContext ? `${businessContext.transactions.filter((t:any)=>t.type==='EXPENSE').length} txns` : '...'} isNegative={kpis.totalExpense > 0} />
+            <KPICard title="Net Profit" value={businessContext ? `₹${kpis.netProfit.toLocaleString()}` : '...'} glowColor="rgba(16,185,129,0.2)" gradient="from-emerald-400 to-emerald-600" change={businessContext ? (kpis.netProfit >= 0 ? 'Profitable' : 'Loss') : '...'} isPositive={kpis.netProfit > 0} isNegative={kpis.netProfit < 0} />
+            <KPICard title="Inventory Items" value={businessContext ? `${businessContext.inventory.length}` : '...'} glowColor="rgba(245,158,11,0.15)" gradient="from-amber-400 to-amber-600" change={businessContext ? `${businessContext.inventory.filter((i:any)=>i.quantity<=i.threshold).length} low stock` : '...'} isNegative={businessContext ? businessContext.inventory.some((i:any)=>i.quantity<=i.threshold) : false} />
           </div>
 
           {/* Row 2 & 3 Grid Layout */}
@@ -376,13 +434,22 @@ export default function Dashboard({ onBack }: DashboardProps) {
                     <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-navy-800"></span>
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-white tracking-tight">AI Growth Assistant</h2>
-                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Always Online</p>
+                    <h2 className="text-base font-bold text-white tracking-tight">AI Business Assistant</h2>
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                      Status: Active / Learning
+                    </p>
                   </div>
                 </div>
-                <button className="p-2 text-slate-500 hover:text-white transition">
-                  <Search size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button className="p-2 text-slate-500 hover:text-white transition group relative focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-lg">
+                    <Mic size={18} />
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-navy-700 text-[10px] font-bold text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Voice</span>
+                  </button>
+                  <button className="p-2 text-slate-500 hover:text-white transition rounded-lg">
+                    <Search size={18} />
+                  </button>
+                </div>
               </div>
 
               {/* Chat Messages */}
@@ -408,7 +475,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
                              </div>
                              
                              <ul className="space-y-3 mb-5 ml-4">
-                               {msg.insight.suggestions.map((s, i) => (
+                               {msg.insight.suggestions.map((s: string, i: number) => (
                                  <li key={i} className="text-xs text-slate-300 flex items-center gap-2 font-medium">
                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
                                    {s}
@@ -445,8 +512,21 @@ export default function Dashboard({ onBack }: DashboardProps) {
                 <div ref={chatEndRef} />
               </div>
 
+              {/* Smart Suggestions — dynamic from real data */}
+              <div className="px-6 pb-2 pt-2 bg-navy-800 z-10 flex gap-2 overflow-x-auto custom-scrollbar no-scrollbar scroll-smooth">
+                {(smartSuggestions.length > 0 ? smartSuggestions : ['Ask about your sales trends', 'Check inventory status', 'Analyze recent expenses']).map((suggestion, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => setChatInput(suggestion)}
+                    className="shrink-0 text-[10px] font-bold text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-full border border-indigo-500/30 transition-colors whitespace-nowrap"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+
               {/* Chat Input */}
-              <div className="p-6 bg-navy-800 border-t border-navy-700 z-10">
+              <div className="px-6 py-4 bg-navy-800 border-t border-navy-700 z-10">
                 <form onSubmit={handleSendMessage} className="relative flex items-center">
                   <input 
                     type="text" 
@@ -472,6 +552,87 @@ export default function Dashboard({ onBack }: DashboardProps) {
             </div>
 
           </div>
+            </>
+          )}
+
+          {activeTab === 'finance' && <TabFinance transactions={businessContext?.transactions || []} />}
+          {activeTab === 'inventory' && <TabInventory inventory={businessContext?.inventory || []} />}
+          {activeTab === 'assistant' && (
+            <div className="h-[75vh]">
+              <div className="bg-navy-800 border border-navy-700 rounded-3xl overflow-hidden flex flex-col h-full shadow-2xl relative">
+                <div className="p-6 border-b border-navy-700 bg-navy-800/80 z-10 flex justify-between items-center">
+                   <div className="flex items-center gap-3">
+                     <BrainCircuit size={24} className="text-indigo-400" />
+                     <h2 className="text-xl font-bold text-white tracking-tight">AI Assistant Command Center</h2>
+                   </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar z-10 bg-navy-900/30">
+                  {messages.map((msg: any) => (
+                    <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {msg.role === 'user' ? (
+                        <div className="bg-navy-700 border border-navy-600 text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[85%] shadow-xl">
+                          <p className="text-sm font-medium">{msg.text}</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-3 max-w-[95%]">
+                          {msg.type === 'insight' ? (
+                            <div className="bg-gradient-to-b from-navy-700 to-navy-800 border border-navy-600 rounded-2xl p-5 shadow-2xl">
+                               <div className="flex items-start gap-3 mb-4">
+                                 <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                                   <ShieldCheck size={20} className="text-indigo-400" />
+                                 </div>
+                                 <div>
+                                   <p className="text-white text-sm font-bold leading-relaxed">{msg.insight.title}</p>
+                                   <p className="text-slate-500 text-[10px] uppercase font-bold tracking-widest mt-1">Suggested Steps:</p>
+                                 </div>
+                               </div>
+                               
+                               <ul className="space-y-3 mb-5 ml-4">
+                                 {msg.insight.suggestions.map((s: string, i: number) => (
+                                   <li key={i} className="text-xs text-slate-300 flex items-center gap-2 font-medium">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
+                                     {s}
+                                   </li>
+                                 ))}
+                               </ul>
+                            </div>
+                          ) : (
+                            <div className="bg-navy-900/60 backdrop-blur-sm border border-navy-700 text-slate-200 px-5 py-3 rounded-2xl rounded-tl-sm shadow-xl">
+                              <p className="text-sm leading-relaxed font-medium">{msg.text}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isTyping && (
+                    <div className="flex items-center gap-2 text-indigo-400 p-2 ml-2">
+                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="px-6 py-4 bg-navy-800 border-t border-navy-700 z-10">
+                  <form onSubmit={handleSendMessage} className="relative flex items-center">
+                    <input 
+                      type="text" 
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Ask your AI about sales, profits, or inventory..."
+                      className="w-full bg-navy-900 border border-navy-700 text-white text-sm rounded-2xl pl-5 pr-16 py-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all font-medium"
+                    />
+                    <button type="submit" disabled={!chatInput.trim() || isTyping} className="absolute right-3 p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-navy-700 disabled:text-slate-600 text-white rounded-xl transition-all shadow-lg"><Send size={18} /></button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+          {(activeTab === 'insights' || activeTab === 'settings') && (
+            <EmptyState title={activeTab === 'insights' ? 'Insights Engine' : 'Settings'} icon={activeTab === 'insights' ? BarChart3 : Settings} />
+          )}
+
         </div>
 
         {/* --- BOTTOM STATUS BAR --- */}
@@ -578,6 +739,134 @@ function StockItem({ name, level, status, color }: any) {
       }`}>
         {status}
       </span>
+    </div>
+  );
+}
+
+function TabFinance({ transactions }: { transactions: any[] }) {
+  const totalIncome = transactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + t.amount, 0);
+  const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
+  const netProfit = totalIncome - totalExpense;
+
+  return (
+    <div className="space-y-6 z-10 relative">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Finance Overview</h2>
+          <p className="text-slate-400 text-sm mt-1">Real-time data from Supabase Transactions</p>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-navy-800 p-6 rounded-2xl border border-navy-700">
+          <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Total Income</p>
+          <p className="text-3xl font-black text-emerald-400">₹{totalIncome.toLocaleString()}</p>
+        </div>
+        <div className="bg-navy-800 p-6 rounded-2xl border border-navy-700">
+          <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Total Expenses</p>
+          <p className="text-3xl font-black text-rose-400">₹{totalExpense.toLocaleString()}</p>
+        </div>
+        <div className="bg-navy-800 p-6 rounded-2xl border border-navy-700">
+          <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Net Profit</p>
+          <p className={`text-3xl font-black ${netProfit >= 0 ? 'text-indigo-400' : 'text-rose-400'}`}>
+            ₹{netProfit.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-navy-800 border border-navy-700 rounded-2xl overflow-hidden shadow-xl">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-navy-900/50 border-b border-navy-700 text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <th className="p-4 pl-6">Date</th>
+              <th className="p-4">Description</th>
+              <th className="p-4">Category</th>
+              <th className="p-4">Type</th>
+              <th className="p-4 pr-6 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((t, idx) => (
+              <tr key={idx} className="border-b border-navy-700 hover:bg-navy-700/30 transition-colors">
+                <td className="p-4 pl-6 text-slate-300 text-sm">{new Date(t.created_at).toLocaleDateString()}</td>
+                <td className="p-4 text-white font-medium">{t.description}</td>
+                <td className="p-4 text-slate-400 text-sm">{t.category}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-md ${
+                    t.type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                  }`}>
+                    {t.type}
+                  </span>
+                </td>
+                <td className={`p-4 pr-6 text-right font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {t.type === 'INCOME' ? '+' : '-'}₹{t.amount.toLocaleString()}
+                </td>
+              </tr>
+            ))}
+            {transactions.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-8 text-center text-slate-500">No transactions recorded</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TabInventory({ inventory }: { inventory: any[] }) {
+  return (
+    <div className="space-y-6 z-10 relative">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Inventory Status</h2>
+          <p className="text-slate-400 text-sm mt-1">Real-time data from Supabase Inventory</p>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {inventory.map((item, idx) => {
+          const isLow = item.quantity <= item.threshold;
+          return (
+            <div key={idx} className={`p-6 rounded-2xl border transition-all ${
+              isLow ? 'bg-rose-500/10 border-rose-500/30 shadow-[0_4px_20px_rgba(244,63,94,0.1)]' : 'bg-navy-800 border-navy-700 hover:border-navy-600'
+            }`}>
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="font-bold text-white text-lg">{item.item_name}</h3>
+                {isLow && <span className="flex h-3 w-3 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                </span>}
+              </div>
+              <div className="flex items-baseline gap-2 mb-4">
+                <span className="text-4xl font-black text-indigo-400">{item.quantity}</span>
+                <span className="text-sm font-bold text-slate-500 uppercase">{item.unit}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-400 uppercase tracking-widest">Threshold: {item.threshold}</span>
+                <span className={`px-2 py-1 rounded uppercase tracking-wider ${
+                  isLow ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
+                  {isLow ? 'Low Stock' : 'Good'}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, icon: Icon }: { title: string, icon: any }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-[60vh] text-center z-10 relative">
+      <div className="w-24 h-24 bg-navy-800 rounded-full flex items-center justify-center mb-6 border border-navy-700 shadow-xl">
+        <Icon size={40} className="text-indigo-500 opacity-50" />
+      </div>
+      <h2 className="text-2xl font-bold text-white mb-2">{title}</h2>
+      <p className="text-slate-400 max-w-sm">This module is actively fetching connections. Available in next update with zero dummy data.</p>
     </div>
   );
 }
